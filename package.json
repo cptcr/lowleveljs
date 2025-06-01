@@ -1,0 +1,70 @@
+{
+  "name": "lljs",
+  "version": "1.0.0",
+  "description": "Low Level JavaScript - Bring C++ hardware interactions to JavaScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "install": "npm run build:native",
+    "preinstall": "node -e \"console.log('Setting up LLJS...')\"",
+    "build": "npm run build:native && npm run build:ts",
+    "build:native": "node-gyp configure && node-gyp build",
+    "build:ts": "tsc",
+    "rebuild": "npm run clean && node-gyp rebuild",
+    "clean": "node-gyp clean",
+    "test": "npm run test:mock",
+    "test:mock": "jest --testNamePattern=\"Mock|Module Loading\"",
+    "test:native": "npm run build && jest",
+    "test:watch": "jest --watch",
+    "test:full": "npm run build && jest",
+    "dev": "tsc --watch",
+    "prepare": "npm run build",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "setup": "npm install --save-dev node-gyp && npm install",
+    "fix-windows": "node fix-windows-build.js && npm run rebuild"
+  },
+  "keywords": [
+    "low-level",
+    "hardware",
+    "c++",
+    "native",
+    "performance",
+    "memory",
+    "cpu",
+    "system"
+  ],
+  "author": "LLJS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lljs/lljs.git"
+  },
+  "files": [
+    "dist/",
+    "binding.gyp",
+    "src/native/"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "ts-jest": "^29.1.5",
+    "typescript": "^5.4.5",
+    "node-gyp": "^10.1.0",
+    "@babel/core": "^7.24.7",
+    "@babel/preset-env": "^7.24.7",
+    "@babel/preset-typescript": "^7.24.7",
+    "@babel/plugin-transform-modules-commonjs": "^7.24.7"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "gypfile": true
+}

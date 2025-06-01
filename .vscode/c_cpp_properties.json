@@ -1,0 +1,52 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/native/headers",
+                "${workspaceFolder}/node_modules/node-addon-api",
+                "C:/Users/${env:USERNAME}/AppData/Local/node-gyp/Cache/*/include/node",
+                "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/include",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE", 
+                "WIN32_LEAN_AND_MEAN",
+                "NAPI_DISABLE_CPP_EXCEPTIONS",
+                "_CRT_SECURE_NO_WARNINGS"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.*/bin/Hostx64/x64/cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/native/headers",
+                "${workspaceFolder}/node_modules/node-addon-api",
+                "/usr/include/node",
+                "/usr/local/include/node",
+                "/usr/include",
+                "/usr/local/include",
+                "~/.node-gyp/*/include/node"
+            ],
+            "defines": [
+                "_DEBUG",
+                "NAPI_DISABLE_CPP_EXCEPTIONS"
+            ],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
