@@ -81,7 +81,7 @@ function createMockNative(): any {
     getHighResTime: () => Date.now() * 1000000,
     sleep: mockFunction,
     sleepMicroseconds: mockFunction,
-    getTimestamp: (format: string = 'unix') => format === 'unix' ? Math.floor(Date.now() / 1000) : new Date().toISOString(),
+    getTimestamp: (format: string = 'unix') => format === 'unix' ? globalThis.Math.floor(Date.now() / 1000) : new Date().toISOString(),
     createTimer: mockFunction,
     destroyTimer: mockFunction,
     getCPUTime: () => 0,
@@ -91,12 +91,12 @@ function createMockNative(): any {
     getTimeZoneInfo: () => ({ bias: 0, standardName: 'Mock', daylightName: 'Mock', isDST: false }),
     
     // Math functions
-    fastSqrt: Math.sqrt,
-    fastInvSqrt: (x: number) => 1 / Math.sqrt(x),
+    fastSqrt: globalThis.Math.sqrt,
+    fastInvSqrt: (x: number) => 1 / globalThis.Math.sqrt(x),
     vectorOperations: mockFunction,
     matrixOperations: mockFunction,
     bitwiseOperations: mockFunction,
-    randomNumbers: (count: number) => Array(count).fill(0).map(() => Math.random()),
+    randomNumbers: (count: number) => Array(count).fill(0).map(() => globalThis.Math.random()),
     fastFourierTransform: mockFunction,
     
     // String functions
@@ -199,25 +199,6 @@ export interface CPUFrequencyInfo {
   max: number;
 }
 
-export interface CPUFrequencyInfo {
-  base: number;
-  current: number;
-  max: number;
-}
-
-export interface TimeZoneInfo {
-  bias: number;
-  standardName: string;
-  daylightName: string;
-  isDST: boolean;
-}
-
-export interface CPUFrequencyInfo {
-  base: number;
-  current: number;
-  max: number;
-}
-
 export interface TimeZoneInfo {
   bias: number;
   standardName: string;
@@ -229,12 +210,6 @@ export interface VectorOperation {
   operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'dot' | 'cross' | 'magnitude' | 'normalize';
   a: number[];
   b?: number[];
-}
-
-export interface MatrixOperation {
-  operation: 'multiply' | 'transpose' | 'inverse' | 'determinant';
-  matrix: number[][];
-  matrix2?: number[][];
 }
 
 export interface MatrixOperation {

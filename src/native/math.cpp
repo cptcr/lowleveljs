@@ -12,6 +12,27 @@
 #include <x86intrin.h>
 #endif
 
+// Windows compatibility defines
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#ifdef _WIN32
+#define __builtin_popcountll __popcnt64
+static inline int __builtin_clzll_impl(unsigned long long x) {
+    if (x == 0) return 64;
+    unsigned long temp;
+    return _BitScanReverse64(&temp, x) ? 63 - temp : 64;
+}
+static inline int __builtin_ctzll_impl(unsigned long long x) {
+    if (x == 0) return 64;
+    unsigned long temp;
+    return _BitScanForward64(&temp, x) ? temp : 64;
+}
+#define __builtin_clzll __builtin_clzll_impl
+#define __builtin_ctzll __builtin_ctzll_impl
+#endif
+
 namespace LLJS::Math {
 
 // Global random number generator
@@ -132,7 +153,7 @@ Napi::Value VectorOperations(const Napi::CallbackInfo& info) {
             _mm256_storeu_pd(resultArray, vecResult);
             
             for (int j = 0; j < 4; j++) {
-                result.Set(i + j, Napi::Number::New(env, resultArray[j]));
+                result.Set(static_cast<uint32_t>(i + j), Napi::Number::New(env, resultArray[j]));
             }
         }
         
@@ -143,7 +164,7 @@ Napi::Value VectorOperations(const Napi::CallbackInfo& info) {
             else if (op == "subtract") value = a[i] - b[i];
             else if (op == "multiply") value = a[i] * b[i];
             else if (op == "divide") value = a[i] / b[i];
-            result.Set(i, Napi::Number::New(env, value));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, value));
         }
         
         return result;
@@ -185,22 +206,27 @@ Napi::Value VectorOperations(const Napi::CallbackInfo& info) {
         
         return Napi::Number::New(env, result);
     } else if (op == "cross") {
-        if (!operation.Has("b") || a.size() != 3 || vectorB.Length() != 3) {
+        if (!operation.Has("b") || a.size() != 3) {
             Napi::TypeError::New(env, "Cross product requires two 3D vectors").ThrowAsJavaScriptException();
             return env.Null();
         }
         
         Napi::Array vectorB = operation.Get("b").As<Napi::Array>();
+        if (vectorB.Length() != 3) {
+            Napi::TypeError::New(env, "Cross product requires two 3D vectors").ThrowAsJavaScriptException();
+            return env.Null();
+        }
+        
         std::vector<double> b = {
-            vectorB.Get(0).As<Napi::Number>().DoubleValue(),
-            vectorB.Get(1).As<Napi::Number>().DoubleValue(),
-            vectorB.Get(2).As<Napi::Number>().DoubleValue()
+            vectorB.Get(static_cast<uint32_t>(0)).As<Napi::Number>().DoubleValue(),
+            vectorB.Get(static_cast<uint32_t>(1)).As<Napi::Number>().DoubleValue(),
+            vectorB.Get(static_cast<uint32_t>(2)).As<Napi::Number>().DoubleValue()
         };
         
         Napi::Array result = Napi::Array::New(env);
-        result.Set(0, Napi::Number::New(env, a[1] * b[2] - a[2] * b[1]));
-        result.Set(1, Napi::Number::New(env, a[2] * b[0] - a[0] * b[2]));
-        result.Set(2, Napi::Number::New(env, a[0] * b[1] - a[1] * b[0]));
+        result.Set(static_cast<uint32_t>(0), Napi::Number::New(env, a[1] * b[2] - a[2] * b[1]));
+        result.Set(static_cast<uint32_t>(1), Napi::Number::New(env, a[2] * b[0] - a[0] * b[2]));
+        result.Set(static_cast<uint32_t>(2), Napi::Number::New(env, a[0] * b[1] - a[1] * b[0]));
         
         return result;
     } else if (op == "magnitude") {
@@ -223,7 +249,7 @@ Napi::Value VectorOperations(const Napi::CallbackInfo& info) {
         
         Napi::Array result = Napi::Array::New(env);
         for (size_t i = 0; i < a.size(); i++) {
-            result.Set(i, Napi::Number::New(env, a[i] / magnitude));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, a[i] / magnitude));
         }
         
         return result;
@@ -269,9 +295,9 @@ Napi::Value MatrixOperations(const Napi::CallbackInfo& info) {
         for (size_t j = 0; j < cols; j++) {
             Napi::Array resultRow = Napi::Array::New(env);
             for (size_t i = 0; i < rows; i++) {
-                resultRow.Set(i, Napi::Number::New(env, matrix[i][j]));
+                resultRow.Set(static_cast<uint32_t>(i), Napi::Number::New(env, matrix[i][j]));
             }
-            result.Set(j, resultRow);
+            result.Set(static_cast<uint32_t>(j), resultRow);
         }
         
         return result;
@@ -310,9 +336,9 @@ Napi::Value MatrixOperations(const Napi::CallbackInfo& info) {
                 for (size_t k = 0; k < cols1; k++) {
                     sum += matrix[i][k] * matrix2[k][j];
                 }
-                resultRow.Set(j, Napi::Number::New(env, sum));
+                resultRow.Set(static_cast<uint32_t>(j), Napi::Number::New(env, sum));
             }
-            result.Set(i, resultRow);
+            result.Set(static_cast<uint32_t>(i), resultRow);
         }
         
         return result;
@@ -413,9 +439,9 @@ Napi::Value MatrixOperations(const Napi::CallbackInfo& info) {
         for (size_t i = 0; i < n; i++) {
             Napi::Array resultRow = Napi::Array::New(env);
             for (size_t j = 0; j < n; j++) {
-                resultRow.Set(j, Napi::Number::New(env, augmented[i][j + n]));
+                resultRow.Set(static_cast<uint32_t>(j), Napi::Number::New(env, augmented[i][j + n]));
             }
-            result.Set(i, resultRow);
+            result.Set(static_cast<uint32_t>(i), resultRow);
         }
         
         return result;
@@ -518,35 +544,35 @@ Napi::Value RandomNumbers(const Napi::CallbackInfo& info) {
     if (distribution == "uniform") {
         std::uniform_real_distribution<double> dist(min, max);
         for (int i = 0; i < count; i++) {
-            result.Set(i, Napi::Number::New(env, dist(gen)));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, dist(gen)));
         }
     } else if (distribution == "normal") {
         // min = mean, max = stddev
         std::normal_distribution<double> dist(min, max);
         for (int i = 0; i < count; i++) {
-            result.Set(i, Napi::Number::New(env, dist(gen)));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, dist(gen)));
         }
     } else if (distribution == "exponential") {
         std::exponential_distribution<double> dist(min); // min = lambda
         for (int i = 0; i < count; i++) {
-            result.Set(i, Napi::Number::New(env, dist(gen)));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, dist(gen)));
         }
     } else if (distribution == "gamma") {
         std::gamma_distribution<double> dist(min, max); // min = alpha, max = beta
         for (int i = 0; i < count; i++) {
-            result.Set(i, Napi::Number::New(env, dist(gen)));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, dist(gen)));
         }
     } else if (distribution == "poisson") {
         std::poisson_distribution<int> dist(min); // min = mean
         for (int i = 0; i < count; i++) {
-            result.Set(i, Napi::Number::New(env, dist(gen)));
+            result.Set(static_cast<uint32_t>(i), Napi::Number::New(env, dist(gen)));
         }
     } else {
         Napi::TypeError::New(env, "Unknown distribution type").ThrowAsJavaScriptException();
         return env.Null();
     }
     
-
+    return result;
 }
 
 /**
@@ -568,8 +594,8 @@ Napi::Value FastFourierTransform(const Napi::CallbackInfo& info) {
     for (uint32_t i = 0; i < inputArray.Length(); i++) {
         if (inputArray.Get(i).IsArray()) {
             Napi::Array complexNum = inputArray.Get(i).As<Napi::Array>();
-            double real = complexNum.Get(0).As<Napi::Number>().DoubleValue();
-            double imag = complexNum.Length() > 1 ? complexNum.Get(1).As<Napi::Number>().DoubleValue() : 0.0;
+            double real = complexNum.Get(static_cast<uint32_t>(0)).As<Napi::Number>().DoubleValue();
+            double imag = complexNum.Length() > 1 ? complexNum.Get(static_cast<uint32_t>(1)).As<Napi::Number>().DoubleValue() : 0.0;
             data.emplace_back(real, imag);
         } else {
             double real = inputArray.Get(i).As<Napi::Number>().DoubleValue();
@@ -616,8 +642,10 @@ Napi::Value FastFourierTransform(const Napi::CallbackInfo& info) {
         Napi::Array complexNum = Napi::Array::New(env);
         complexNum.Set(0U, Napi::Number::New(env, data[i].real()));
         complexNum.Set(1U, Napi::Number::New(env, data[i].imag()));
-        result.Set(i, complexNum);
+        result.Set(static_cast<uint32_t>(i), complexNum);
     }
     
     return result;
+}
+
 }

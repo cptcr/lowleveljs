@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sched.h>
+#include <fcntl.h>
 #endif
 
 namespace LLJS::Threading {
@@ -38,8 +39,11 @@ struct ThreadInfo {
 struct MutexInfo {
     std::unique_ptr<std::mutex> mutex;
     std::unique_ptr<std::recursive_mutex> recursiveMutex;
+    std::unique_ptr<std::timed_mutex> timedMutex;
+    std::unique_ptr<std::recursive_timed_mutex> recursiveTimedMutex;
     uint64_t id;
     bool isRecursive{false};
+    bool isTimed{false};
 };
 
 struct SemaphoreInfo {
@@ -47,6 +51,7 @@ struct SemaphoreInfo {
     HANDLE semaphore;
     #else
     sem_t* semaphore;
+    char semName[64];
     #endif
     uint64_t id;
     int maxCount;
@@ -104,8 +109,8 @@ Napi::Value CreateThread(const Napi::CallbackInfo& info) {
         handle.Set("handle", Napi::External<void>::New(env, nullptr));
         
         return handle;
-    } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Failed to create thread: ") + e.what()).ThrowAsJavaScriptException();
+    } catch (const std::exception&) {
+        Napi::Error::New(env, "Failed to create thread").ThrowAsJavaScriptException();
         return env.Null();
     }
 }
@@ -142,8 +147,8 @@ Napi::Value JoinThread(const Napi::CallbackInfo& info) {
         threads.erase(it);
         
         return Napi::Number::New(env, exitCode);
-    } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Failed to join thread: ") + e.what()).ThrowAsJavaScriptException();
+    } catch (const std::exception&) {
+        Napi::Error::New(env, "Failed to join thread").ThrowAsJavaScriptException();
         return Napi::Number::New(env, -1);
     }
 }
@@ -177,7 +182,7 @@ Napi::Value DetachThread(const Napi::CallbackInfo& info) {
         
         threads.erase(it);
         return Napi::Boolean::New(env, true);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return Napi::Boolean::New(env, false);
     }
 }
@@ -216,11 +221,12 @@ Napi::Value CreateMutex(const Napi::CallbackInfo& info) {
         auto mutexInfo = std::make_unique<MutexInfo>();
         mutexInfo->id = ++mutexCounter;
         mutexInfo->isRecursive = recursive;
+        mutexInfo->isTimed = true; // Enable timed operations
         
         if (recursive) {
-            mutexInfo->recursiveMutex = std::make_unique<std::recursive_mutex>();
+            mutexInfo->recursiveTimedMutex = std::make_unique<std::recursive_timed_mutex>();
         } else {
-            mutexInfo->mutex = std::make_unique<std::mutex>();
+            mutexInfo->timedMutex = std::make_unique<std::timed_mutex>();
         }
         
         uint64_t mutexId = mutexInfo->id;
@@ -235,8 +241,8 @@ Napi::Value CreateMutex(const Napi::CallbackInfo& info) {
         handle.Set("handle", Napi::External<void>::New(env, nullptr));
         
         return handle;
-    } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Failed to create mutex: ") + e.what()).ThrowAsJavaScriptException();
+    } catch (const std::exception&) {
+        Napi::Error::New(env, "Failed to create mutex").ThrowAsJavaScriptException();
         return env.Null();
     }
 }
@@ -271,26 +277,28 @@ Napi::Value LockMutex(const Napi::CallbackInfo& info) {
     try {
         if (timeout == -1) {
             // Blocking lock
-            if (it->second->isRecursive) {
-                it->second->recursiveMutex->lock();
+            if (it->second->isRecursive && it->second->recursiveTimedMutex) {
+                it->second->recursiveTimedMutex->lock();
+            } else if (it->second->timedMutex) {
+                it->second->timedMutex->lock();
             } else {
-                it->second->mutex->lock();
+                return Napi::Boolean::New(env, false);
             }
             return Napi::Boolean::New(env, true);
         } else {
             // Timed lock
             auto timeoutDuration = std::chrono::milliseconds(timeout);
-            bool success;
+            bool success = false;
             
-            if (it->second->isRecursive) {
-                success = it->second->recursiveMutex->try_lock_for(timeoutDuration);
-            } else {
-                success = it->second->mutex->try_lock_for(timeoutDuration);
+            if (it->second->isRecursive && it->second->recursiveTimedMutex) {
+                success = it->second->recursiveTimedMutex->try_lock_for(timeoutDuration);
+            } else if (it->second->timedMutex) {
+                success = it->second->timedMutex->try_lock_for(timeoutDuration);
             }
             
             return Napi::Boolean::New(env, success);
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return Napi::Boolean::New(env, false);
     }
 }
@@ -318,14 +326,16 @@ Napi::Value UnlockMutex(const Napi::CallbackInfo& info) {
     }
     
     try {
-        if (it->second->isRecursive) {
-            it->second->recursiveMutex->unlock();
+        if (it->second->isRecursive && it->second->recursiveTimedMutex) {
+            it->second->recursiveTimedMutex->unlock();
+        } else if (it->second->timedMutex) {
+            it->second->timedMutex->unlock();
         } else {
-            it->second->mutex->unlock();
+            return Napi::Boolean::New(env, false);
         }
         
         return Napi::Boolean::New(env, true);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return Napi::Boolean::New(env, false);
     }
 }
@@ -358,13 +368,21 @@ Napi::Value CreateSemaphore(const Napi::CallbackInfo& info) {
         semInfo->currentCount = initialCount;
         
         #ifdef _WIN32
-        semInfo->semaphore = CreateSemaphoreA(NULL, initialCount, maxCount, NULL);
+        // Use Windows CreateSemaphoreW to avoid name conflicts
+        semInfo->semaphore = ::CreateSemaphoreW(NULL, static_cast<LONG>(initialCount), static_cast<LONG>(maxCount), NULL);
         if (semInfo->semaphore == NULL) {
             Napi::Error::New(env, "Failed to create semaphore").ThrowAsJavaScriptException();
             return env.Null();
         }
         #else
-        semInfo->semaphore = sem_open(nullptr, O_CREAT, 0644, initialCount);
+        // Create a unique semaphore name
+        snprintf(semInfo->semName, sizeof(semInfo->semName), "/lljs_sem_%lu", semInfo->id);
+        
+        // Remove any existing semaphore with the same name
+        sem_unlink(semInfo->semName);
+        
+        // Create the semaphore
+        semInfo->semaphore = sem_open(semInfo->semName, O_CREAT | O_EXCL, 0644, static_cast<unsigned int>(initialCount));
         if (semInfo->semaphore == SEM_FAILED) {
             Napi::Error::New(env, "Failed to create semaphore").ThrowAsJavaScriptException();
             return env.Null();
@@ -384,8 +402,8 @@ Napi::Value CreateSemaphore(const Napi::CallbackInfo& info) {
         handle.Set("count", Napi::Number::New(env, initialCount));
         
         return handle;
-    } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Failed to create semaphore: ") + e.what()).ThrowAsJavaScriptException();
+    } catch (const std::exception&) {
+        Napi::Error::New(env, "Failed to create semaphore").ThrowAsJavaScriptException();
         return env.Null();
     }
 }
@@ -418,7 +436,7 @@ Napi::Value WaitSemaphore(const Napi::CallbackInfo& info) {
     }
     
     try {
-        bool success;
+        bool success = false;
         
         if (timeout == -1) {
             // Blocking wait
@@ -431,13 +449,18 @@ Napi::Value WaitSemaphore(const Napi::CallbackInfo& info) {
         } else {
             // Timed wait
             #ifdef _WIN32
-            DWORD result = WaitForSingleObject(it->second->semaphore, timeout);
+            DWORD result = WaitForSingleObject(it->second->semaphore, static_cast<DWORD>(timeout));
             success = (result == WAIT_OBJECT_0);
             #else
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_sec += timeout / 1000;
             ts.tv_nsec += (timeout % 1000) * 1000000;
+            // Handle nanosecond overflow
+            if (ts.tv_nsec >= 1000000000) {
+                ts.tv_sec += ts.tv_nsec / 1000000000;
+                ts.tv_nsec %= 1000000000;
+            }
             success = (sem_timedwait(it->second->semaphore, &ts) == 0);
             #endif
         }
@@ -447,7 +470,7 @@ Napi::Value WaitSemaphore(const Napi::CallbackInfo& info) {
         }
         
         return Napi::Boolean::New(env, success);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return Napi::Boolean::New(env, false);
     }
 }
@@ -493,7 +516,8 @@ Napi::Value SignalSemaphore(const Napi::CallbackInfo& info) {
         
         // Release the semaphore
         #ifdef _WIN32
-        if (!ReleaseSemaphore(it->second->semaphore, count, NULL)) {
+        LONG prevCount;
+        if (!ReleaseSemaphore(it->second->semaphore, static_cast<LONG>(count), &prevCount)) {
             return Napi::Number::New(env, -1);
         }
         #else
@@ -507,7 +531,7 @@ Napi::Value SignalSemaphore(const Napi::CallbackInfo& info) {
         it->second->currentCount += count;
         
         return Napi::Number::New(env, previousCount);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return Napi::Number::New(env, -1);
     }
 }
